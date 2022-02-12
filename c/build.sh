@@ -7,4 +7,5 @@ case "$0" in
 esac
 cdir="${cdir%/*}"
 
-gcc -g -Wall -O3 -o ~/pacextractor "${cdir}/pacextractor.c" "${cdir}/crc16.c"
+cd "$cdir"
+gcc -g -Wall -O3 -o pacextractor pacextractor.c crc16.c

@@ -2,17 +2,10 @@
 
 Extract all data that I may recognize in package.
 
-I(@HemanthJabalpuri) had ported spreadtrum PAC file extraction code to java.
-
-### Downloads:
-Download **_PacExtractor.jar_** from [releases](https://github.com/HemanthJabalpuri/pacextractor/releases).  
+I(@HemanthJabalpuri) had ported spreadtrum PAC file extraction code to Java and Python.
 
 ### Usage:
-**PC Users**  
-`java -jar PacExtractor.jar pacfile outdir`  
-
-**Android Users:**  
-`dalvikvm -cp PacExtractor.jar com.sprd.pacextractor.PacExtractor pacfile outdir`  
+See respective README in C or Python or Java folders
 
 ### Test:
 An example .pac file to extract can be found at [here](https://androidfilehost.com/?fid=674106145207485464)(~8MiB).
@@ -26,3 +19,4 @@ https://github.com/yonglongliu/vendor/blob/master/sprd/build/buildpac/tools/unpa
 https://github.com/newsfh/sprd_tool/blob/master/parse_pac.pl  
 https://github.com/Transsion-CI/7.SPRD_Compile/blob/master/Scripts/pac_via_conf.pl  
 https://github.com/yulinwang79/sprd-ap/blob/master/auto-pac/crc16.c  
+https://github.com/openLuat/LuatOS/blob/16cbbdb6a410c1116ece801f565b4b805e0e5867/bsp/air724/sdk/tools/combine_core.py

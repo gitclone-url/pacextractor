@@ -1,7 +1,7 @@
 ### Python PacExtractor
 
 #### Install Requirements
-`pip3 install crcmod`
+`pip install crcmod`
 
 
 #### Usage
