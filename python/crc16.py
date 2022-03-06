@@ -1,4 +1,4 @@
-import crcmod.predefined  # install crcmod module using `pip install crcmod`
+import sys
 
 
 CRC16_TABLE = (
@@ -41,7 +41,7 @@ CRC16_TABLE = (
 def calc_crc16(data, crc_base=0x0000):
     crc = crc_base
     for b in data:
-        crc = (crc >> 8) ^ (CRC16_TABLE[(crc ^ b) & 0xff])
+        crc = (crc >> 8) ^ CRC16_TABLE[(crc ^ b) & 0xff]
     return crc
 
 
@@ -53,19 +53,25 @@ def crc16_simple(data, crc_base=0x0000):
     crc = crc_base
     for b in data:
         crc ^= b 
-        for i in range(8):
+        for _ in range(8):
             if crc & 1:
                 crc >>= 1
-                crc ^= 0xA001
+                crc ^= 0xa001
             else:
                 crc >>= 1
     return crc
 
 
+crc16_fun = None
 # Using crcmod module for faster crc calculation
-# CRC-16 Modbus RTU function
-crc16_fun = crcmod.predefined.mkCrcFun('modbus')
-
-# Use above function with DF1 as default
+# CRC-16 Modbus DF1 function
 def crc16(data, crc_base=0x0000):
+    global crc16_fun
+    if crc16_fun is None:
+        try:
+            import crcmod.predefined  # install crcmod module using `pip install crcmod`
+            crc16_fun = crcmod.predefined.mkCrcFun('modbus')  # It is RTU by default
+        except ImportError:
+            sys.exit('\nInstall crcmod module using "pip install crcmod"\n')
+
     return crc16_fun(data, crc_base)

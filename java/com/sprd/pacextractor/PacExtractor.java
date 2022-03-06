@@ -20,6 +20,7 @@ public class PacExtractor {
     public static final short SIZE_OF_PAC_HEADER = 2124; // bytes
     public static final short SIZE_OF_PARTITION_HEADER = 2580; // bytes
     public static final long PAC_MAGIC = 0xfffafffaL;
+    public static final String fiveSpaces = "     ";
 
     private static RandomAccessFile in;
     private static boolean debug;
@@ -56,9 +57,9 @@ public class PacExtractor {
 
             in = new RandomAccessFile(inFile, "r");
             PacHeader pacHeader = new PacHeader();
-            if (unsigned(pacHeader.dwSize) != inFile.length())
+            if (pacHeader.dwSize != inFile.length())
                 exit("Bin packet's size is not correct");
-            else if (!getString(pacHeader.szVersion).equals("BP_R1.0.0"))
+            else if (!getString(pacHeader.szVersion).equals("BP_R1.0.0") && !getString(pacHeader.szVersion).equals("BP_R2.0.1"))
                 exit("Unsupported PAC version");
 
             if (debug) pacHeader.printInfo();
@@ -76,18 +77,17 @@ public class PacExtractor {
             }
 
             System.out.println("\nExtracting...\n");
-            String fiveSpaces = "     ";
             byte[] buffer = new byte[4096];
             for (i = 0; i < partHeaders.length; i++) {
                 if (partHeaders[i].partitionSize == 0)
                     continue;
-                in.seek(unsigned(partHeaders[i].partitionAddrInPac));
+                in.seek(partHeaders[i].partitionAddrInPac);
                 String outfile = getString(partHeaders[i].fileName);
                 System.out.print(fiveSpaces + outfile);
 
                 FileOutputStream fos = new FileOutputStream(outdirS + outfile);
                 int read;
-                long len = unsigned(partHeaders[i].partitionSize);
+                long len = partHeaders[i].partitionSize;
                 long tsize = len;
                 while ((read = in.read(buffer, 0, len < buffer.length ? (int) len : buffer.length)) > 0) {
                     fos.write(buffer, 0, read);
@@ -122,23 +122,31 @@ public class PacExtractor {
             for (int i = 0; i < read; ++i)
                 crc16.update(buffer[i]);
             int crc1InPac = unsigned(pacHeader.wCRC1);
-            if (debug) System.out.println("Computed CRC1 = " + crc16.getValue() + ", CRC1 in PAC = " + crc1InPac);
-            if (crc16.getValue() != crc1InPac)
+            if (crc16.getValue() != crc1InPac) {
+                if (debug) System.out.println("Computed CRC1 = " + crc16.getValue() + ", CRC1 in PAC = " + crc1InPac);
                 exit("CRC Check failed for CRC1\n");
+            }
         }
 
         System.out.println("Checking CRC Part 2");
         crc16.reset();
         int crc2InPac = unsigned(pacHeader.wCRC2);
         byte[] buffer2 = new byte[64 * 1024];
+        long len = pacHeader.dwSize - SIZE_OF_PAC_HEADER;
+        long tsize = len;
         in.seek(SIZE_OF_PAC_HEADER);
-        while ((read = in.read(buffer2)) > 0)
+        while ((read = in.read(buffer2, 0, len < buffer2.length ? (int) len : buffer2.length)) > 0) {
             for (int i = 0; i < read; i++)
                 crc16.update(buffer2[i]);
+            len -= read;
+            System.out.print("\r" + (100 - ((100 * len) / tsize)) + "%");
+        }
+        System.out.println("\r" + fiveSpaces);
 
-        if (debug) System.out.println("Computed CRC2 = " + crc16.getValue() + ", CRC2 in PAC = " + crc2InPac + "\n");
-        if (crc16.getValue() != crc2InPac)
+        if (crc16.getValue() != crc2InPac) {
+            if (debug) System.out.println("Computed CRC2 = " + crc16.getValue() + ", CRC2 in PAC = " + crc2InPac + "\n");
             exit("CRC Check failed for CRC2");
+        }
     }
 
     public static int unsigned(short n) {
@@ -179,8 +187,10 @@ public class PacExtractor {
     }
 
     public static class PacHeader {
-        char[] szVersion = new char[24];     // packet struct version
-        int dwSize;                          // the whole packet size
+        char[] szVersion = new char[22];     // packet struct version
+        int dwHiSize;                        // the whole packet high size
+        int dwLoSize;                        // the whole packet low size
+        long dwSize;                         // the whole packet size
         char[] productName = new char[256];  // product name
         char[] firmwareName = new char[256]; // product version
         int partitionCount;                  // the number of files that will be downloaded, the file may be an operation
@@ -201,7 +211,9 @@ public class PacExtractor {
 
         public PacHeader() throws IOException {
             readString(szVersion);
-            dwSize = readInt();
+            dwHiSize = readInt();
+            dwLoSize = readInt();
+            dwSize = dwHiSize * 0x100000000L + unsigned(dwLoSize);
             readString(productName);
             readString(firmwareName);
             partitionCount = readInt();
@@ -224,7 +236,7 @@ public class PacExtractor {
         public void printInfo() {
             System.out.println(
               "Version"      + "\t\t= "   + getString(szVersion)                + "\n" +
-              "Size"         + "\t\t= "   + unsigned(dwSize)                    + "\n" +
+              "Size"         + "\t\t= "   + dwSize                              + "\n" +
               "PrdName"      + "\t\t= "   + getString(productName)              + "\n" +
               "FirmwareName" +   "\t= "   + getString(firmwareName)             + "\n" +
               "FileCount"    +   "\t= "   + unsigned(partitionCount)            + "\n" +
@@ -249,14 +261,18 @@ public class PacExtractor {
         int length;                           // size of this struct itself
         char[] partitionName = new char[256]; // file ID,such as FDL,Fdl2,NV and etc.
         char[] fileName = new char[256];      // file name in the packet bin file. It only stores file name
-        char[] szFileName = new char[256];    // Reserved now
-        int partitionSize;                    // file size
+        char[] szFileName = new char[252];    // Reserved now
+        int hiPartitionSize;                  // high file size
+        int hiDataOffset;                     // high data offset
+        int loPartitionSize;                  // low file size
+        long partitionSize;                   // file size
         int nFileFlag;                        // if "0", means that it need not a file, and
                                               // it is only an operation or a list of operations, such as file ID is "FLASH"
                                               // if "1", means that it need a file
         int nCheckFlag;                       // if "1", this file must be downloaded;
                                               // if "0", this file can not be downloaded;
-        int partitionAddrInPac;               // the offset from the packet file header to this file data
+        int loDataOffset;                     // the low offset from the packet file header to this file data
+        long partitionAddrInPac;              // the offset from the packet file header to this file data
         int dwCanOmitFlag;                    // if "1", this file can not be downloaded and not check it as "All files"
                                               // in download and spupgrade tool.
         int dwAddrNum;
@@ -268,10 +284,14 @@ public class PacExtractor {
             readString(partitionName);
             readString(fileName);
             readString(szFileName);
-            partitionSize = readInt();
+            hiPartitionSize = readInt();
+            hiDataOffset = readInt();
+            loPartitionSize = readInt();
+            partitionSize = hiPartitionSize * 0x100000000L + unsigned(loPartitionSize);
             nFileFlag = readInt();
             nCheckFlag = readInt();
-            partitionAddrInPac = readInt();
+            loDataOffset = readInt();
+            partitionAddrInPac = hiDataOffset * 0x100000000L + unsigned(loDataOffset);
             dwCanOmitFlag = readInt();
             dwAddrNum = readInt();
             readInt(dwAddr);
@@ -283,10 +303,10 @@ public class PacExtractor {
               "Size"        + "\t\t= " + unsigned(length)             + "\n" +
               "FileID"      + "\t\t= " + getString(partitionName)     + "\n" +
               "FileName"    +   "\t= " + getString(fileName)          + "\n" +
-              "FileSize"    +   "\t= " + unsigned(partitionSize)      + "\n" +
+              "FileSize"    +   "\t= " + partitionSize                + "\n" +
               "FileFlag"    +   "\t= " + nFileFlag                    + "\n" +
               "CheckFlag"   +   "\t= " + nCheckFlag                   + "\n" +
-              "DataOffset"  +   "\t= " + unsigned(partitionAddrInPac) + "\n" +
+              "DataOffset"  +   "\t= " + partitionAddrInPac           + "\n" +
               "CanOmitFlag" +   "\t= " + dwCanOmitFlag                + "\n"
             );
         }

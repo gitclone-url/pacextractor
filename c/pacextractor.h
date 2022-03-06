@@ -17,8 +17,9 @@
 #define NAME_LENGTH 256
 
 typedef struct {
-    uint16_t szVersion[24]; // packet struct version
-    uint32_t dwSize; // the whole packet size
+    uint16_t szVersion[22]; // packet struct version
+    uint32_t dwHiSize; // the whole packet high size
+    uint32_t dwLoSize; // the whole packet low size
     uint16_t productName[NAME_LENGTH]; // product name
     uint16_t firmwareName[NAME_LENGTH]; // product version
     uint32_t partitionCount; // the number of files that will be downloaded, the file may be an operation
@@ -42,8 +43,10 @@ typedef struct {
     uint32_t length; // size of this struct itself
     uint16_t partitionName[NAME_LENGTH]; // file ID,such as FDL,Fdl2,NV and etc.
     uint16_t fileName[NAME_LENGTH]; // file name in the packet bin file. It only stores file name
-    uint16_t szFileName[NAME_LENGTH]; // Reserved now
-    uint32_t partitionSize; // file size
+    uint16_t szFileName[NAME_LENGTH - 4]; // Reserved now
+    uint32_t hiPartitionSize; // high file size
+    uint32_t hiDataOffset; // high data offset
+    uint32_t loPartitionSize; // low file size
 
     /* FileFlag: if "0", means that it need not a file, and
        it is only an operation or a list of operations, such as file ID is "FLASH"
@@ -54,7 +57,7 @@ typedef struct {
        if "0", this file can not be downloaded */
     uint32_t nCheckFlag;
 
-    uint32_t partitionAddrInPac; // the offset from the packet file header to this file data
+    uint32_t loDataOffset; // the low offset from the packet file header to this file data
 
     /* CanOmitFlag: if "1", this file can not be downloaded and not check it as "All files"
        in download and spupgrade tool. */
