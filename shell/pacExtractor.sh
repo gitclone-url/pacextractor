@@ -9,32 +9,51 @@
 # This file has been put into the public domain.
 # You can do whatever you want with this file.
 
+if [ $# -lt 2 ]; then
+  echo "Usage: pacExtractor.sh file.pac outdir"
+  exit
+fi
+
 pacf="$1"
 outdir="$2"
 
-mkdir "$outdir"
+mkdir -p "$outdir" 2>/dev/null
 
-szVersion="$(dd if="$pacf" bs=1 count=48 2>/dev/null)"
-dwSize="$(dd if="$pacf" bs=1 skip=48 count=4 2>/dev/null | od -An -t d4 | tr -d ' ')"
-partitionCount="$(dd if="$pacf" bs=1 skip=1076 count=4 2>/dev/null | od -An -t d4 | tr -d ' ')"
+getData() {
+  dd if="$pacf" bs=1 skip=$1 count=$2 2>/dev/null
+}
 
-echo "--$szVersion--"
-echo "--$dwSize--"
-echo "--$partitionCount--"
+getInt() {
+  getData $1 4 | od -A n -t u4 | tr -d ' '
+}
+
+szVersion="$(getData 0 44)"
+dwHiSize="$(getInt 44)"
+dwLoSize="$(getInt 48)"
+dwSize="$((dwHiSize*0x100000000+dwLoSize))"
+partitionCount="$(getInt 1076)"
+
+echo "--Version: $szVersion--"
+echo "--PAC size: $dwSize--"
+echo "--File Count: $partitionCount--"
+echo
 
 seekoff=2124
 for i in $(seq $partitionCount); do
-  filename="$(dd if="$pacf" bs=1 skip=$((seekoff+516)) count=512 2>/dev/null)"
-  partitionSize="$(dd if="$pacf" bs=1 skip=$((seekoff+1540)) count=4 2>/dev/null | od -An -t d4 | tr -d ' ')"
-  if [ $partitionSize -eq 0 ]; then
-    seekoff=$((seekoff+2580))
-    continue
-  fi
-  partitionAddrInPac="$(dd if="$pacf" bs=1 skip=$((seekoff+1552)) count=4 2>/dev/null | od -An -t d4 | tr -d ' ')"
-  echo "--$filename--"
-  echo "--$partitionSize--"
-  echo "--$partitionAddrInPac--"
+  hiPartitionSize="$(getInt $((seekoff+1532)))"
+  loPartitionSize="$(getInt $((seekoff+1540)))"
+  partitionSize="$((hiPartitionSize*0x100000000+loPartitionSize))"
+  if [ $partitionSize -ne 0 ]; then
+    filename="$(getData $((seekoff+516)) 512)"
+    hiDataOffset="$(getInt $((seekoff+1536)))"
+    loDataOffset="$(getInt $((seekoff+1552)))"
+    partitionAddrInPac="$((hiDataOffset*0x100000000+loDataOffset))"
+    echo "--Filename: $filename--"
+    echo "--Size: $partitionSize--"
+    echo "--Offset: $partitionAddrInPac--"
 
-  dd if="$pacf" of="$outdir/$filename" bs=1 skip=$partitionAddrInPac count=$partitionSize
+    dd if="$pacf" of="$outdir/$filename" iflag=skip_bytes,count_bytes status=progress bs=4096 skip=$partitionAddrInPac count=$partitionSize
+    echo
+  fi
   seekoff=$((seekoff+2580))
 done
